@@ -11,23 +11,69 @@ The platform package owns the complete runtime payload:
 
 ```text
 bin/zg[.exe]
-bin/*.dll                 # Windows runtime DLLs, when required
-lib/*                     # Unix runtime libraries, when required
+lib/libzvec_c_api.*       # storage runtime and lib/data dictionaries
+lib/lib{llama,ggml}*      # CUDA variant: shared llama.cpp core and CPU backend
+lib/*onnxruntime*        # ONNX Runtime core/providers, when dynamically linked
+lib/*ggml-cuda*          # primary CUDA 13.1 GGUF plugin
+lib/cuda12/*ggml-cuda*    # CUDA 12.4 GGUF fallback plugin
 checksums.json
 LICENSES/
 SBOM.spdx.json
 ```
 
+`bin/` contains only the native executable. All runtime libraries, providers,
+plugins, and dictionaries live under `lib/`. Unix binaries use a `../lib`
+rpath. Windows uses a native MSVC delay-load hook to resolve DLLs from the
+executable's sibling `lib/`. The binary runs directly, without a JavaScript
+launcher or user-provided loader environment variables.
+
+The default `linux-x64-gnu` and `win32-x64-msvc` native packages are CPU/CUDA
+bundles. CUDA libraries remain runtime plugins: compatible NVIDIA libraries
+enable GPU use, while hosts without them continue on CPU. Release maintainers
+may use `--cpu-only` for a CPU-only build, but that variant is not
+published as the default x64 package on Linux or Windows.
+
+`npm run build` and release packaging prefer CUDA on those two targets when
+`nvcc` from CUDA 13.1 is available. If `nvcc` is absent they build a CPU-only
+package instead. An installed but unsupported CUDA toolkit is an error; use
+`--cpu-only` deliberately rather than silently producing a different GPU ABI.
+The full CUDA build also needs the 12.4 toolkit for the fallback plugin; an
+incomplete CUDA build fails and does not silently publish a CPU package.
+CPU/CUDA build trees are isolated under `target/cpu` and `target/cuda` on these
+targets. `--no-build` reuses the last successful recorded build, not a stale
+bundle selected by its existence. Explicit CI bundles use `--bundle-dir`.
+Plain `cargo build --release -p zg` remains a non-CUDA developer build.
+
+Published target/backend support is:
+
+| Target | llama.cpp / GGUF | ONNX Runtime |
+| --- | --- | --- |
+| macOS ARM64 | CPU + Metal | CPU (CoreML deliberately not selected) |
+| macOS x64 (14+) | CPU + Metal where available | CPU (CoreML deliberately not selected) |
+| Linux x64 glibc (Ubuntu 24.04 baseline) | CPU + CUDA 13.1, CUDA 12.4 fallback | CPU + CUDA 12 |
+| Linux ARM64 glibc | CPU | CPU |
+| Windows x64 | CPU + CUDA 13.1, CUDA 12.4 fallback | CPU + CUDA 12 |
+
+A deliberate CPU-only Windows build retains DirectML. The published Windows
+CUDA bundle uses the official ONNX Runtime 1.28.0 CUDA 12 provider and does not
+claim DirectML support. ORT requires CUDA 12 runtime/cuBLAS and cuDNN 9 even
+when GGUF uses CUDA 13; the two runtime families can coexist. NVIDIA driver,
+CUDA runtime, cuBLAS and cuDNN remain host dependencies, not bundled libraries.
+macOS keeps its existing ONNX CPU routing because of CoreML regressions.
+Linux musl, Windows ARM64, CUDA on ARM64/macOS and Vulkan packages are not in
+the release matrix. CUDA builds target SM 75/80/86/89/90 plus compute_90 PTX;
+this is not a claim that every newer GPU has been tested.
+
 The meta package locks every platform package to its exact version through
 `optionalDependencies`. Its `postinstall` selects the installed package,
-validates package identity and every payload checksum, copies runtime libraries,
-and replaces `bin/zg.exe` last. The npm command is always named `zg`; `.exe` is
-used as the stable internal target so npm generates a direct Windows shim.
+validates package identity and every payload checksum, and materializes the
+native `bin/` and `lib/` payload. The npm command is always named `zg`; the meta
+package retains the cross-platform `bin/zg.exe` native entry point so npm's
+Windows shim and Unix symlink both enter the executable directly.
 
-The published meta package supports Node.js 14.14 and newer for installation.
-Node is not used after `postinstall`; `zg` runs the selected native executable
-directly. The root workspace may require a newer Node version for development
-and package tests without reducing the published package's compatibility.
+The published meta package supports Node.js 14.14 and newer for installation
+only, not for CLI execution. The root workspace may require a newer Node version for
+development and package tests without reducing published compatibility.
 
 Release order:
 
@@ -44,16 +90,19 @@ Release order:
 
 `.github/workflows/rust-publish.yml` builds and installs every target on its
 native runner, checks CLI startup, managed-rg and actual daemon IPC, and collects
-the candidates into a downloadable artifact. Regular runs do not publish.
+the candidates into a downloadable artifact. The workflow is manual-only;
+main/release-branch updates do not allocate GPU runners or publish packages.
+Manual candidate runs do not publish unless explicitly requested.
 Intel macOS installation and runtime checks must pass before the other four
 platform builds start. Its ONNX Runtime with CoreML and zvec SDK are built from
 pinned sources, cached, and bundled with the native package. The Intel release
 targets macOS 14 and later.
 
-Windows prepares the prebuilt ONNX Runtime selected by locked `ort-sys` with
-bounded download retries, verifies its SHA-256, and caches the complete archive
-and extracted runtime before compiling. The original static-link configuration
-is preserved.
+Linux x64 and Windows x64 compile and run CLI GPU tests on the hosted T4 runners.
+Both packages share one llama/ggml core and include CUDA 13.1 and CUDA 12.4 GGUF
+plugins. The hash-verified official ONNX Runtime CUDA 12 core/providers are
+shared-library sidecars. The Windows CUDA package supports CPU and NVIDIA CUDA,
+not DirectML; the non-CUDA Windows build retains its existing DirectML runtime.
 
 Explicit publication runs from a `rust-v<version>`-tagged commit on `main` and
 uses npm provenance with trusted publishing or `NPM_TOKEN`. Native packages are

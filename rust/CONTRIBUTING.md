@@ -67,3 +67,57 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc -p zg-engine --no-deps
 ```
+
+## Manual CUDA CLI validation
+
+CUDA-specific helpers live only in `scripts/cuda/`: `build.sh`/`build.ps1`
+assemble the primary bundle, `build-fallback.py` adds only the CUDA 12.4 plugin,
+`prepare-onnxruntime.py` verifies and stages official ORT archives, and
+`check.sh`/`check.ps1` audit the resulting runtime linkage. `prepare-windows.ps1`
+and the two pinned requirements files provision Windows build/runtime tools.
+`e2e.py` validates installed packages on a real GPU. CUDA validation consists
+of actual compilation, linkage audits and GPU end-to-end execution; ordinary
+PR CI retains the npm packaging tests without a separate CUDA mock-test suite.
+
+`Rust CUDA GPU CI` only runs through `workflow_dispatch`; PR updates and merges
+do not allocate GPUs. Select a reviewed source ref and check `confirm_reviewed`.
+The workflow resolves the ref once to a SHA. The `gpu-runners` group's
+`gpu-linux-t4` and `gpu-windows-t4` GitHub-hosted runners each compile, audit,
+pack, install and exercise their own CUDA npm package in the same job.
+Builds target T4 (SM 75)
+for this test; release builds retain their full architecture list.
+
+Both platforms run the same CLI index, readiness and vector-search test with
+GGUF `local/embeddinggemma-300m` and ONNX `local/all-minilm-l6-v2`, explicitly
+requesting CUDA with indexing concurrency 2. A successful command alone is not
+a pass: index and search must select CUDA, GGUF must report positive layer offload
+to the GPU, ONNX must place a nonzero number of
+graph nodes on `CUDAExecutionProvider`, and any model-level CPU fallback fails
+the test. ORT may still put supported shape/other nodes on CPU; this test does
+not claim every ONNX operator runs on GPU.
+
+Per-command stdout/stderr, GPU/driver details and a machine-readable result are
+retained as `cuda-cli-evidence-*` artifacts, including when a model fails. Model
+caches are reused, and only one GPU validation workflow runs at a time. Ordinary
+PR/main CI only runs non-CUDA builds/tests; it does not compile CUDA packages.
+Complete Rust packaging/publication is also
+manual-only and uses these GPU runners for the two CUDA targets.
+
+To reproduce against an unpacked/installed CUDA bundle (Python 3.12 recommended):
+
+```sh
+python scripts/cuda/e2e.py --bundle /path/to/package --model-cache /path/to/models --logs /path/to/logs --expected-gguf-cuda 13.1
+```
+
+Both platforms first run GGUF and ONNX with only CUDA 12/cuDNN 9 visible,
+requiring GGUF to select the CUDA 12.4 fallback. Linux then runs GGUF in a separate
+CUDA 13.1 container. Windows hides the compiler toolkit's CUDA 13 DLL directory
+from PATH for the fallback test, then restores CUDA 13.1 and reruns both models,
+requiring the GGUF primary plugin and ONNX CUDA 12 provider to coexist. Logs must
+prove the expected GGUF plugin as well as actual GPU/provider selection.
+The Windows job provisions VS 2022 C++ tools (including MSVC 14.38), a pinned
+libclang wheel and the repository-pinned Rust toolchain on the Data Science VM.
+The job only inspects the runner's existing NVIDIA driver; CI never downloads,
+upgrades or reboots a driver. Fix an incompatible runner image outside the job.
+The Linux image must supply a compatible driver and NVIDIA container support.
+Driver/runtime failures never count as successful CPU execution.

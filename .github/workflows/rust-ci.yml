@@ -6,6 +6,7 @@ on:
     paths:
       - "rust/**"
       - ".github/workflows/rust-ci.yml"
+      - ".github/workflows/rust-package-build.yml"
       - ".github/actions/**"
       - ".gitignore"
       - "!**/*.md"
@@ -14,6 +15,7 @@ on:
     paths:
       - "rust/**"
       - ".github/workflows/rust-ci.yml"
+      - ".github/workflows/rust-package-build.yml"
       - ".github/actions/**"
       - ".gitignore"
       - "!**/*.md"
@@ -77,6 +79,8 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Validate Cargo metadata
         run: cargo metadata --locked --no-deps --format-version 1 > /dev/null
+      - name: Test npm packaging
+        run: node --test scripts/npm-local.test.mjs npm/meta/install.test.cjs
 
   test:
     name: rust test (${{ matrix.os }})

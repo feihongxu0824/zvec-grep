@@ -346,6 +346,54 @@ Run the complete local gate with:
 bash scripts/check.sh
 ```
 
+## Native and CUDA builds
+
+Run commands below from `rust/`. The shared npm build/pack/install entry points
+prefer CUDA on Linux x64 and Windows x64. With no `nvcc` on PATH they build a
+CPU-only package; `--cpu-only` selects that behavior explicitly. Other release
+targets keep their existing non-CUDA backends. Plain Cargo builds remain
+non-CUDA unless `--features cuda` is selected.
+
+```sh
+npm run build
+npm run build -- --cpu-only
+npm run release:pack
+npm run release:pack -- --cpu-only
+```
+
+CUDA builds require Toolkit 13.1 on PATH and Toolkit 12.4 at `CUDA12_ROOT`
+(default `/usr/local/cuda-12.4` on Linux, or `CUDA_PATH_V12_4` on Windows).
+An installed but unsupported primary toolkit, missing fallback toolkit, or
+failed CUDA compilation is an error, not a silent CPU fallback. Building does
+not require a GPU. Both variants need the normal Rust/C++ build prerequisites;
+CUDA additionally uses CMake, Ninja, Python 3 and libclang, plus patchelf/readelf
+on Linux or Visual Studio 2022 Build Tools on Windows.
+
+The direct CUDA entry points are `scripts/cuda/build.sh` and
+`scripts/cuda/build.ps1`. They create `target/release/zg-cuda/{bin,lib}` by
+default; the npm entry point isolates them under `target/cuda/` and CPU builds
+under `target/cpu/`. `CARGO_TARGET_DIR` changes the parent output directory.
+The CUDA 12.4 Windows fallback requires MSVC 14.38; the workflow switches
+toolsets before running `scripts/cuda/build-fallback.py`.
+
+For reproducibility, CI uses the pinned CUDA 13.1.1/Ubuntu 24.04 builder in
+`docker/cuda-builder.Dockerfile`, then the CUDA 12.4.1/Ubuntu 22.04 builder for
+the fallback plugin only. Distribution builds use
+`75-real;80-real;86-real;89-real;90-real;90-virtual`. Override
+`CMAKE_CUDA_ARCHITECTURES` only for a deliberately narrower test build.
+
+The package contains `bin/zg[.exe]`, with all shared libraries, plugins and
+dictionaries under `lib/`. GGUF loads the CUDA 13.1 plugin first, then the
+CUDA 12.4 fallback from `lib/cuda12/`; both use the same locked llama.cpp core.
+ONNX uses the hash-verified official ORT 1.28.0 CUDA 12 core/providers.
+NVIDIA driver, CUDA runtime, cuBLAS and cuDNN 9 remain host dependencies.
+CUDA-enabled x64 builds default to automatic device selection and fall back
+to CPU when a GPU/backend is unavailable. `--device cpu` or
+`ZVEC_GREP_DEVICE=cpu` explicitly selects CPU.
+
+See [npm distribution](npm/README.md) for the complete layout, OS/backend
+support matrix, runtime dependencies, and publication policy.
+
 ## Local npm installation
 
 Build the release binary with the same script name used by the TypeScript
@@ -385,7 +433,8 @@ at [`1ab7975`](https://github.com/alibaba/zvec/commit/1ab7975dfc2d2160054bafff61
 `data/jieba_dict` resources beside the executable. Both local and release
 packages include these SDK assets; the engine uses the bundled dictionary.
 
-Pass `--no-build` after `--` to reuse an existing `target/release/zg`, or pass
+Pass `--no-build` after `--` to reuse the last successful npm build (or a plain
+Cargo `target/release/zg` when no build record exists), or pass
 `--prefix <path>` to install or smoke-test under a custom npm prefix:
 
 ```sh
@@ -406,6 +455,12 @@ Validate the release manifest and build the current platform dry-run packages:
 npm run release:verify
 npm run release:pack
 ```
+
+The default published Linux x64 and Windows x64 artifacts are complete CPU/CUDA
+bundles, so installation requires no CUDA compiler. Local packaging follows the
+build policy above: no toolkit produces a CPU-only package. Use
+`npm run release:cpu` to explicitly produce a CPU-only package; CI supplies and
+audits a complete CUDA bundle before packaging the default x64 releases.
 
 The release tarballs are written under `dist/npm/release/tarballs/`. Run a real
 two-tarball install in an isolated npm prefix and verify the materialized binary
@@ -429,9 +484,22 @@ The runtime library directory must include zvec's shared library and its
 `data/jieba_dict` directory. Without `--lib-dir`, these assets are read from
 the binary's directory.
 
+For a complete audited CUDA bundle, preserve its `bin/` and `lib/` layout:
+
+```sh
+node scripts/npm-release.mjs pack-platform \
+  --target linux-x64-gnu \
+  --bundle-dir target/release/zg-cuda \
+  --no-build
+```
+
+Bundle mode accepts only regular files under `bin/` and `lib/`; `bin/`
+contains exactly the target executable. It cannot be combined with
+`--binary`, `--lib-dir`, or `--cpu-only`. All payload files are checksummed.
+
 The `Publish Rust packages` workflow builds all five published native targets on matching
-GitHub runners. Pushes to `main` or `release/rust-*` branches and manual runs
-produce downloadable candidates without publishing to npm. Each runner installs
+GitHub runners. Manual runs produce downloadable candidates without publishing
+to npm unless publication is explicitly selected. Each runner installs
 its platform and meta tarballs, then runs `zg --version`, checks managed-rg,
 starts the packaged daemon, compares workspace status in direct and server
 modes, and stops the daemon. The server status request crosses the IPC boundary;
@@ -443,9 +511,14 @@ Intel macOS is built and verified first. Only after its tarball installation,
 CLI startup, managed-rg, and daemon IPC checks pass do the other four native
 builds start. The final artifact is collected after all five targets pass.
 
-Linux candidates are built and smoke-tested on Ubuntu 24.04. The current ONNX
-Runtime prebuilt libraries cannot link against Ubuntu 22.04's glibc and C++
-runtime, so older Linux distributions are not covered by this release workflow.
+Complete packaging/publication is manual-only; main updates do not start it.
+Linux x64 and Windows x64 compile, package and run GGUF/ONNX CUDA CLI tests on
+`gpu-linux-t4` and `gpu-windows-t4`, respectively. Linux x64 uses the pinned
+Ubuntu 24.04 CUDA builder image; Linux ARM64 uses its native runner. Windows
+installs pinned CUDA 13.1 and 12.4 toolchains on the GPU host. Ordinary PR CI
+does not compile CUDA packages. The current ONNX Runtime prebuilt libraries cannot link against
+Ubuntu 22.04's glibc and C++ runtime, so older Linux distributions are not
+covered by this release workflow.
 Intel macOS builds ONNX Runtime 1.28.0 with CoreML and the native zvec SDK from
 pinned source revisions because neither dependency supplies prebuilt Intel
 macOS libraries. Both SDKs are cached and their shared libraries are included
