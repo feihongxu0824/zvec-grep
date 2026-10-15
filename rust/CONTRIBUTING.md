@@ -75,6 +75,8 @@ assemble the primary bundle, `build-fallback.py` adds only the CUDA 12.4 plugin,
 `prepare-onnxruntime.py` verifies and stages official ORT archives, and
 `check.sh`/`check.ps1` audit the resulting runtime linkage. `prepare-windows.ps1`
 and the two pinned requirements files provision Windows build/runtime tools.
+`cuda-builder.Dockerfile` provides the shared Linux CUDA build environment for
+source CI and package builds.
 `e2e.py` validates installed packages on a real GPU. CUDA validation consists
 of actual compilation, linkage audits and GPU end-to-end execution; ordinary
 PR CI retains the npm packaging tests without a separate CUDA mock-test suite.

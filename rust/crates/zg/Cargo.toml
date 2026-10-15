@@ -10,7 +10,6 @@ publish.workspace = true
 [features]
 default = []
 cuda = ["zg-engine/cuda"]
-vulkan = ["zg-engine/vulkan"]
 
 [dependencies]
 serde_json.workspace = true

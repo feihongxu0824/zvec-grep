@@ -158,7 +158,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: >-
           docker build --platform linux/amd64
-          --file rust/docker/cuda-builder.Dockerfile
+          --file rust/scripts/cuda/cuda-builder.Dockerfile
           --tag zvec-grep-cuda-builder .
       - name: Build the Linux CPU/CUDA bundle
         if: inputs.target == 'linux-x64-gnu'
@@ -175,7 +175,7 @@ jobs:
         if: inputs.target == 'linux-x64-gnu'
         working-directory: ${{ github.workspace }}
         run: |
-          docker build --platform linux/amd64 --file rust/docker/cuda-builder.Dockerfile \
+          docker build --platform linux/amd64 --file rust/scripts/cuda/cuda-builder.Dockerfile \
             --build-arg CUDA_IMAGE=nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5 \
             --tag zvec-grep-cuda12-builder .
           docker run --rm --platform linux/amd64 \

@@ -137,9 +137,9 @@ jobs:
             ~/.cargo/registry/
             ~/.cargo/git/
             rust/target/
-          key: rust-cuda-ci-v1-${{ matrix.target }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/docker/cuda-builder.Dockerfile') }}-${{ needs.source.outputs.sha }}
+          key: rust-cuda-ci-v1-${{ matrix.target }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/scripts/cuda/cuda-builder.Dockerfile') }}-${{ needs.source.outputs.sha }}
           restore-keys: |
-            rust-cuda-ci-v1-${{ matrix.target }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/docker/cuda-builder.Dockerfile') }}-
+            rust-cuda-ci-v1-${{ matrix.target }}-${{ hashFiles('rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/scripts/cuda/cuda-builder.Dockerfile') }}-
       - name: Restore both real models
         uses: actions/cache@v5
         with:
@@ -154,7 +154,7 @@ jobs:
         run: |
           nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader
           mkdir -p rust/target "$HOME/.cargo/registry" "$HOME/.cargo/git"
-          docker build --platform linux/amd64 --file rust/docker/cuda-builder.Dockerfile \
+          docker build --platform linux/amd64 --file rust/scripts/cuda/cuda-builder.Dockerfile \
             --build-arg RUST_VERSION="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml)" \
             --tag zvec-grep-cuda-ci .
           docker run --rm --gpus all --platform linux/amd64 \

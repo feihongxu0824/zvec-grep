@@ -377,7 +377,7 @@ The CUDA 12.4 Windows fallback requires MSVC 14.38; the workflow switches
 toolsets before running `scripts/cuda/build-fallback.py`.
 
 For reproducibility, CI uses the pinned CUDA 13.1.1/Ubuntu 24.04 builder in
-`docker/cuda-builder.Dockerfile`, then the CUDA 12.4.1/Ubuntu 22.04 builder for
+`scripts/cuda/cuda-builder.Dockerfile`, then the CUDA 12.4.1/Ubuntu 22.04 builder for
 the fallback plugin only. Distribution builds use
 `75-real;80-real;86-real;89-real;90-real;90-virtual`. Override
 `CMAKE_CUDA_ARCHITECTURES` only for a deliberately narrower test build.
