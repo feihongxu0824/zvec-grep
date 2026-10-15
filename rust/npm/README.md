@@ -90,15 +90,29 @@ Release order:
 
 `.github/workflows/rust-publish.yml` builds and installs every target on its
 native runner, checks CLI startup, managed-rg and actual daemon IPC, and collects
-the candidates into a downloadable artifact. The workflow is manual-only;
-main/release-branch updates do not allocate GPU runners or publish packages.
-Manual candidate runs do not publish unless explicitly requested.
+the candidates into a downloadable artifact. Pushes to `main` and
+`release/rust-*`, and manual runs with `publish=false, cuda=false`, use ordinary CPU runners;
+they do not allocate GPUs or publish packages. CUDA compilation still runs
+for the default Linux/Windows x64 bundles and does not require GPU hardware.
+Manual `cuda=true` runs switch these two targets to GPU runners and enable
+package-level GPU end-to-end validation even with `publish=false`. Publishing
+also enables GPU validation unconditionally, even if `cuda` was not selected.
 Intel macOS installation and runtime checks must pass before the other four
 platform builds start. Its ONNX Runtime with CoreML and zvec SDK are built from
 pinned sources, cached, and bundled with the native package. The Intel release
 targets macOS 14 and later.
 
-Linux x64 and Windows x64 compile and run CLI GPU tests on the hosted T4 runners.
+After collection, independent Linux/Windows CPU jobs download and install the
+exact native/meta tarballs offline, without rebuilding. They verify checksums,
+CLI startup, daemon IPC, and real GGUF/ONNX indexing and vector queries with
+explicit CPU selection and default CPU fallback, without CUDA host libraries.
+These checks also run for unpublished candidates and must pass before npm
+publication; failures retain the candidate and `cpu-artifact-evidence-*` logs.
+
+During publication, Linux x64 and Windows x64 compile and run CLI GPU tests on
+the hosted T4 runners. The separate manual `rust-cuda-ci.yml` checks and tests
+the CUDA-enabled workspace, then reuses its compiled test binary for real ORT
+and llama.cpp GPU model tests without packaging or publishing.
 Both packages share one llama/ggml core and include CUDA 13.1 and CUDA 12.4 GGUF
 plugins. The hash-verified official ONNX Runtime CUDA 12 core/providers are
 shared-library sidecars. The Windows CUDA package supports CPU and NVIDIA CUDA,

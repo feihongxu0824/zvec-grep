@@ -40,6 +40,7 @@ import {
 } from "./npm-release-compliance.mjs";
 import {
   rollbackVersion,
+  smokeArtifactRelease,
   smokeInstalledPackage,
   smokeRegistryRelease,
 } from "./npm-release-smoke.mjs";
@@ -370,6 +371,15 @@ async function main() {
     await smokeCurrent(options);
     return;
   }
+  if (command === "smoke-artifacts") {
+    await smokeArtifactRelease({
+      manifest: loadReleaseManifest(),
+      release: JSON.parse(await readFile(join(tarballRoot, "release.json"), "utf8")),
+      tarballRoot,
+      prefixRoot: join(releaseRoot, "artifact-smoke"),
+    });
+    return;
+  }
   if (command === "collect") {
     await packMeta();
     await collectRelease({
@@ -409,7 +419,7 @@ async function main() {
     return;
   }
   throw new Error(
-    "usage: npm-release.mjs <build|verify|verify-publication|pack-platform|pack-meta|pack-current|smoke-current|collect|publish|promote|rollback-version|smoke-registry> [--target TARGET] [--binary PATH] [--lib-dir PATH] [--bundle-dir PATH] [--cpu-only] [--no-build]",
+    "usage: npm-release.mjs <build|verify|verify-publication|pack-platform|pack-meta|pack-current|smoke-current|smoke-artifacts|collect|publish|promote|rollback-version|smoke-registry> [--target TARGET] [--binary PATH] [--lib-dir PATH] [--bundle-dir PATH] [--cpu-only] [--no-build]",
   );
 }
 

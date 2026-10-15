@@ -4140,6 +4140,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "tree-sitter",
  "tree-sitter-c",
  "tree-sitter-cpp",

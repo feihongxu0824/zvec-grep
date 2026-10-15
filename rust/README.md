@@ -511,12 +511,21 @@ Intel macOS is built and verified first. Only after its tarball installation,
 CLI startup, managed-rg, and daemon IPC checks pass do the other four native
 builds start. The final artifact is collected after all five targets pass.
 
-Complete packaging/publication is manual-only; main updates do not start it.
-Linux x64 and Windows x64 compile, package and run GGUF/ONNX CUDA CLI tests on
-`gpu-linux-t4` and `gpu-windows-t4`, respectively. Linux x64 uses the pinned
+Pushes to `main` and `release/rust-*` start candidate packaging on CPU runners,
+as do manual runs with both `publish=false` and `cuda=false`; they do not publish
+to npm. Set `cuda=true, publish=false` to build and validate GPU candidates without
+publishing. Either `cuda=true` or `publish=true` switches Linux/Windows x64 to
+`gpu-linux-t4` and `gpu-windows-t4`, respectively, and runs the packaged GGUF/ONNX
+GPU validation. Publishing always requires GPU validation regardless of `cuda`.
+CPU runners still compile the default CUDA-capable bundles. Linux x64 uses the pinned
 Ubuntu 24.04 CUDA builder image; Linux ARM64 uses its native runner. Windows
-installs pinned CUDA 13.1 and 12.4 toolchains on the GPU host. Ordinary PR CI
-does not compile CUDA packages. The current ONNX Runtime prebuilt libraries cannot link against
+installs pinned CUDA 13.1 and 12.4 toolchains on the selected build runner. Ordinary PR CI
+does not compile CUDA packages. The independent manual `rust-cuda-ci.yml` runs
+CUDA-enabled workspace checks, Clippy and tests, then reuses the compiled test
+binary for real ORT and llama.cpp CUDA model tests in the same platform job.
+It verifies actual GPU execution without CPU fallback, does no npm packaging,
+and leaves Model2Vec in the non-CUDA model workflow.
+The current ONNX Runtime prebuilt libraries cannot link against
 Ubuntu 22.04's glibc and C++ runtime, so older Linux distributions are not
 covered by this release workflow.
 Intel macOS builds ONNX Runtime 1.28.0 with CoreML and the native zvec SDK from
@@ -539,6 +548,14 @@ Use the filenames from the downloaded artifact when the version changes. On
 Windows, use `zg.cmd` if PowerShell blocks the generated `zg.ps1` shim. Artifacts
 are retained for 14 days.
 
+Every candidate also goes through separate Linux/Windows x64 CPU artifact jobs.
+These download the collected `.tgz` files, verify their hashes and default CUDA
+variant, install them offline without rebuilding, and exercise CLI/daemon IPC.
+With CUDA host libraries unavailable, the installed meta package must also pass
+real GGUF/ONNX indexing and vector queries using both explicit CPU selection and
+default automatic CPU fallback. Logs are retained as `cpu-artifact-evidence-*`.
+Failure blocks npm publication; the candidate artifact is kept for diagnosis.
+
 To publish, update the Rust workspace version, tag the release commit on `main`
 as `rust-v<version>`, and manually run the workflow with `publish` enabled. The
 publishing repository must have an npm trusted publisher configured for all six
@@ -557,6 +574,9 @@ Selecting `latest` requests a separate promotion job that changes the default
 installation only after all registry checks pass.
 
 `release:collect` requires all platform tarballs and packs the meta package last.
+`release:artifact-smoke` installs the current platform's exact collected native
+and meta tarballs from `dist/npm/release/tarballs`, verifies the installation and
+CLI/daemon operation, and does not compile, repack or publish anything.
 `release:publish` validates the collected files before publishing native packages
 and then the meta package under `rust-canary` with npm provenance. An already published version is
 reused only when its tarball integrity matches, allowing a partial publication

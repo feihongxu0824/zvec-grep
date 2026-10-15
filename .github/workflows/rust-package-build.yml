@@ -17,15 +17,6 @@ on:
         description: Build and run CUDA CLI validation together on a GPU host.
         type: boolean
         default: false
-      cuda_architectures:
-        type: string
-        required: false
-        default: ""
-      source_ref:
-        description: Optional immutable source revision for manual GPU validation
-        type: string
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -46,7 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -173,22 +163,17 @@ jobs:
       - name: Build the Linux CPU/CUDA bundle
         if: inputs.target == 'linux-x64-gnu'
         working-directory: ${{ github.workspace }}
-        env:
-          CMAKE_CUDA_ARCHITECTURES: ${{ inputs.cuda_architectures }}
         run: |
           docker run --rm --platform linux/amd64 \
             --volume "${GITHUB_WORKSPACE}:/work:ro" \
             --volume "${GITHUB_WORKSPACE}/rust/target:/work-target" \
             --env CARGO_TARGET_DIR=/work-target \
             --env CMAKE_BUILD_PARALLEL_LEVEL=2 \
-            --env CMAKE_CUDA_ARCHITECTURES \
             zvec-grep-cuda-builder \
             bash scripts/cuda/build.sh --primary-only
       - name: Build the Linux CUDA 12.4 fallback plugin
         if: inputs.target == 'linux-x64-gnu'
         working-directory: ${{ github.workspace }}
-        env:
-          CMAKE_CUDA_ARCHITECTURES: ${{ inputs.cuda_architectures }}
         run: |
           docker build --platform linux/amd64 --file rust/docker/cuda-builder.Dockerfile \
             --build-arg CUDA_IMAGE=nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5 \
@@ -197,7 +182,7 @@ jobs:
             --volume "${GITHUB_WORKSPACE}:/work:ro" \
             --volume "${GITHUB_WORKSPACE}/rust/target:/work-target" \
             --env CARGO_TARGET_DIR=/work-target \
-            --env CMAKE_BUILD_PARALLEL_LEVEL=2 --env CMAKE_CUDA_ARCHITECTURES \
+            --env CMAKE_BUILD_PARALLEL_LEVEL=2 \
             zvec-grep-cuda12-builder bash -euo pipefail -c '
               python3 scripts/cuda/build-fallback.py --bundle /work-target/release/zg-cuda
               bash scripts/cuda/check.sh /work-target/release/zg-cuda
@@ -221,8 +206,6 @@ jobs:
             '
       - name: Build the Windows CPU/CUDA bundle
         if: inputs.target == 'win32-x64-msvc'
-        env:
-          CMAKE_CUDA_ARCHITECTURES: ${{ inputs.cuda_architectures }}
         run: >-
           powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass
           -File scripts/cuda/build.ps1 -PrimaryOnly
@@ -253,8 +236,6 @@ jobs:
           toolset: "14.38"
       - name: Build the Windows CUDA 12.4 fallback plugin
         if: inputs.target == 'win32-x64-msvc'
-        env:
-          CMAKE_CUDA_ARCHITECTURES: ${{ inputs.cuda_architectures }}
         run: python scripts/cuda/build-fallback.py --bundle target/release/zg-cuda --cuda-root "$env:CUDA_PATH"
       - name: Build the native target
         if: inputs.target != 'linux-x64-gnu' && inputs.target != 'win32-x64-msvc'
